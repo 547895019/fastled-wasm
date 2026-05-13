@@ -419,9 +419,12 @@ export class GraphicsManager {
 
     if (!this.gl) this.initWebGL();
 
-    // Update canvas size based on composite screenMap dimensions
-    if (Object.keys(this.screenMaps).length > 0 && this.canvas) {
-      // Cache bounds computation - only recompute when screenmaps change
+    // Compute global bounds whenever we have screenmaps — independent of
+    // whether the canvas is currently attached. The render loop below relies
+    // on this._cachedGlobalBounds for absolute pixel placement, so leaving it
+    // null when canvas is offscreen-transferred would crash the loop and
+    // produce a black screen.
+    if (Object.keys(this.screenMaps).length > 0) {
       if (this._boundsStale || !this._cachedGlobalBounds) {
         let globalMinX = Infinity, globalMinY = Infinity;
         let globalMaxX = -Infinity, globalMaxY = -Infinity;
@@ -445,6 +448,10 @@ export class GraphicsManager {
 
       this.gridWidth = this._cachedGlobalBounds.gridWidth;
       this.gridHeight = this._cachedGlobalBounds.gridHeight;
+    }
+
+    // Update canvas display size only when canvas is locally available.
+    if (Object.keys(this.screenMaps).length > 0 && this.canvas) {
 
       // Display upscaling: canvas should be at least MIN_CANVAS_DIM on its longest side.
       // This ensures recorded videos have usable resolution (e.g., 64x64 grid -> 640x640 canvas).
@@ -547,9 +554,12 @@ export class GraphicsManager {
       const stripData = screenMap.strips[strip_id];
       const pixelCount = data.length / 3;
       const { map } = stripData;
-      const bounds = screenMap._cachedBounds || computeScreenMapBounds(screenMap);
-      const min_x = bounds.absMin[0];
-      const min_y = bounds.absMin[1];
+      // Multi-strip fix: use GLOBAL bounds so each strip lands at its absolute
+      // position in the texture. Previously this used per-strip bounds, which
+      // collapsed all strips to (0,0) and stacked them in the same rows
+      // (last-wins).
+      const min_x = this._cachedGlobalBounds.minX;
+      const min_y = this._cachedGlobalBounds.minY;
       const x_array = map.x;
       const y_array = map.y;
       const len = Math.min(x_array.length, y_array.length);
@@ -579,7 +589,12 @@ export class GraphicsManager {
           continue;
         }
         // log(x, y);
-        const diameter = stripData.diameter || 1.0;
+        // C++ ScreenMap(vec2f*, u32) defaults diameter to -1.0 when the user
+        // does not set one. The previous `|| 1.0` fallback only handled 0/NaN,
+        // letting -1 through and producing radius = -1 — the dy/dx loops then
+        // never execute, drawing zero pixels. Treat any non-positive diameter
+        // as "use the default" so the LED still renders as at least one pixel.
+        const diameter = (stripData.diameter > 0) ? stripData.diameter : 1.0;
         const radius = Math.floor(diameter / 2);
 
         // Draw a filled square for each LED
