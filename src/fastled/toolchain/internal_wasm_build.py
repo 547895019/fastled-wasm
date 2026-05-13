@@ -32,7 +32,10 @@ import shutil
 import subprocess
 import sys
 import time
-import tomllib
+try:
+    import tomllib
+except ModuleNotFoundError:
+    import tomli as tomllib
 from pathlib import Path
 
 from fastled.interrupts import handle_keyboard_interrupt

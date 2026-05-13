@@ -95,7 +95,10 @@ def load_debug_symbol_config(
         return config
 
     with open(build_flags, "rb") as handle:
-        import tomllib
+        try:
+            import tomllib
+        except ModuleNotFoundError:
+            import tomli as tomllib
 
         data = tomllib.load(handle)
 
