@@ -424,12 +424,35 @@ class EmscriptenToolchain:
         )
         output_js = output_dir / "fastled.js"
 
+        # For external sketches we point fastled_dir/examples/<name> at the
+        # user's sketch dir via a symlink. If the FastLED tree happens to ship
+        # an example with the same name (e.g. "Blink"), naively skipping the
+        # symlink-creation step would silently compile the bundled example
+        # instead of the user's code. We move the bundled example aside while
+        # the build runs and restore it in `finally`.
+        needs_cleanup = False
+        shadowed_backup: Path | None = None
         if not is_in_tree:
-            if not example_dir.exists():
-                example_dir.symlink_to(sketch_dir, target_is_directory=True)
+            if example_dir.is_symlink():
+                # Stale symlink from a previous interrupted run — remove it.
+                example_dir.unlink()
+            elif example_dir.exists():
+                # Real upstream FastLED example collides with the user's
+                # external sketch name. Move it aside; restore in finally.
+                shadowed_backup = example_dir.with_name(
+                    example_dir.name + ".fastled-wasm-shadowed"
+                )
+                if shadowed_backup.exists():
+                    # Stale backup from an earlier crashed run; clear it.
+                    shutil.rmtree(shadowed_backup, ignore_errors=True)
+                example_dir.rename(shadowed_backup)
+                print(
+                    f"  Note: external sketch '{sketch_name}' shadows the "
+                    f"bundled FastLED example at {example_dir}; the bundled "
+                    f"example is temporarily moved aside for this build."
+                )
+            example_dir.symlink_to(sketch_dir, target_is_directory=True)
             needs_cleanup = True
-        else:
-            needs_cleanup = False
 
         meson_build_dir = fastled_dir / ".build" / f"meson-wasm-{mode}"
 
@@ -458,6 +481,9 @@ class EmscriptenToolchain:
         finally:
             if needs_cleanup and example_dir.is_symlink():
                 example_dir.unlink()
+            if shadowed_backup is not None and shadowed_backup.exists():
+                # Restore the bundled example that was temporarily moved aside.
+                shadowed_backup.rename(example_dir)
 
         return output_js
 
