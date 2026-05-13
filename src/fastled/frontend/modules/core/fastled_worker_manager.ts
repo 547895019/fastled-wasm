@@ -468,6 +468,31 @@ export class FastLEDWorkerManager {
           }
           break;
 
+        case 'fastled-canvas-buffer-resized':
+          // Worker's tile-mode GraphicsManager resized its OffscreenCanvas
+          // (e.g. from 16x16 placeholder default to 660x11 for a 60-LED
+          // strip). The main-thread placeholder canvas's width/height are
+          // frozen after transferControlToOffscreen — any attempt to set
+          // them throws InvalidStateError — so the layout manager can't
+          // learn the real aspect ratio from canvas.width / canvas.height.
+          //
+          // Push the worker's dimensions to the layout manager via a side
+          // channel (setExternalCanvasDimensions), then re-apply layout so
+          // applyCanvasStyles computes the correct aspect ratio and sets
+          // CSS accordingly. Without this, the canvas displays as a 1:1
+          // square stretching a 60:1 horizontal strip until something
+          // else fires ResizeObserver (typically a tab switch).
+          if (data.payload && typeof data.payload.width === 'number' && typeof data.payload.height === 'number') {
+            const lm = globalThis.fastLEDLayoutManager;
+            if (lm && typeof lm.setExternalCanvasDimensions === 'function') {
+              lm.setExternalCanvasDimensions(data.payload.width, data.payload.height);
+            }
+            if (lm && typeof lm.forceLayoutUpdate === 'function') {
+              lm.forceLayoutUpdate();
+            }
+          }
+          break;
+
         default:
           // Don't log for known response types
           if (!data.type.endsWith('_response')) {

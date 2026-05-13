@@ -863,6 +863,13 @@ export class JsonUiManager {
     /** @type {UILayoutPlacementManager} Responsive layout management */
     this.layoutManager = new UILayoutPlacementManager();
 
+    // Expose globally so GraphicsManager can read layoutData.canvasSize when
+    // it self-syncs canvas CSS dimensions on backing-buffer resize. Avoids
+    // having to thread the reference through several constructor signatures.
+    if (typeof globalThis !== 'undefined') {
+      globalThis.fastLEDLayoutManager = this.layoutManager;
+    }
+
     // Initialize the UI Recorder
     /** @type {UIRecorder|null} UI recording functionality */
     this.uiRecorder = null;

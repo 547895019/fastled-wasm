@@ -772,9 +772,22 @@ export class UILayoutPlacementManager {
   applyCanvasStyles(canvas) {
     const { canvasSize } = this.layoutData;
 
-    // Get the canvas's internal dimensions to determine aspect ratio
-    const canvasWidth = canvas.width || 1;
-    const canvasHeight = canvas.height || 1;
+    // Get the canvas's internal dimensions to determine aspect ratio.
+    // After transferControlToOffscreen(), the placeholder canvas's width/
+    // height are frozen at their pre-transfer values (the browser refuses
+    // any further .width = N assignment). In that case the worker can push
+    // its OffscreenCanvas backing-buffer size to us via
+    // setExternalCanvasDimensions() — prefer that when available.
+    let canvasWidth, canvasHeight;
+    if (this._externalCanvasDimensions
+        && this._externalCanvasDimensions.width > 0
+        && this._externalCanvasDimensions.height > 0) {
+      canvasWidth = this._externalCanvasDimensions.width;
+      canvasHeight = this._externalCanvasDimensions.height;
+    } else {
+      canvasWidth = canvas.width || 1;
+      canvasHeight = canvas.height || 1;
+    }
     const aspectRatio = canvasWidth / canvasHeight;
 
     // Calculate display dimensions that maintain aspect ratio
@@ -818,6 +831,21 @@ export class UILayoutPlacementManager {
       canExpand: this.layoutData.canExpand,
       uiColumns: this.layoutData.uiColumns,
     };
+  }
+
+  /**
+   * Override the canvas dimensions used for aspect-ratio computation.
+   * Useful for tile-mode where the worker's OffscreenCanvas backing buffer
+   * is the real source of truth, not the placeholder canvas's frozen
+   * width/height. Pass (0, 0) or null to clear and revert to reading
+   * canvas.width/height.
+   */
+  setExternalCanvasDimensions(width, height) {
+    if (width > 0 && height > 0) {
+      this._externalCanvasDimensions = { width, height };
+    } else {
+      this._externalCanvasDimensions = null;
+    }
   }
 
   /**

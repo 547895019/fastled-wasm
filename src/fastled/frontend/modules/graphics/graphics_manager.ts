@@ -478,6 +478,27 @@ export class GraphicsManager {
         if (this.gl) {
           this.gl.viewport(0, 0, displayWidth, displayHeight);
         }
+
+        // Notify main-thread layout manager about the new backing-buffer
+        // dimensions. Required because (a) when running in a worker, the
+        // OffscreenCanvas backing buffer is independent of the main-thread
+        // placeholder canvas's frozen width/height (browser throws on any
+        // post-transferControlToOffscreen write), and (b) without this
+        // notification the layout manager keeps using the initial 16x16
+        // placeholder dimensions to compute aspect ratio, producing a
+        // wildly wrong 1:1 CSS sizing until something else fires
+        // ResizeObserver (typically a tab switch).
+        try {
+          if (typeof self !== 'undefined'
+              && typeof (self as any).postMessage === 'function'
+              && typeof (self as any).document === 'undefined') {
+            // `document === undefined` → we're in a worker scope.
+            (self as any).postMessage({
+              type: 'fastled-canvas-buffer-resized',
+              payload: { width: displayWidth, height: displayHeight },
+            });
+          }
+        } catch (_) {}
       }
     }
 
