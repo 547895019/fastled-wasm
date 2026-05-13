@@ -383,6 +383,22 @@ export class GraphicsManagerThreeJS {
     this.canvas.width = targetWidth * RESOLUTION_BOOST;
     this.canvas.height = targetHeight * RESOLUTION_BOOST;
 
+    // Notify main-thread layout manager about the OffscreenCanvas backing-
+    // buffer aspect ratio. The placeholder canvas in the DOM is frozen at
+    // its pre-transferControlToOffscreen 16x16 size, so the layout manager
+    // cannot infer the right aspect ratio from canvas.width directly.
+    // See graphics_manager.ts (tile renderer) for the matching dispatch.
+    try {
+      if (typeof self !== 'undefined'
+          && typeof (self as any).postMessage === 'function'
+          && typeof (self as any).document === 'undefined') {
+        (self as any).postMessage({
+          type: 'fastled-canvas-buffer-resized',
+          payload: { width: this.canvas.width, height: this.canvas.height },
+        });
+      }
+    } catch (_) {}
+
     // Set display size only for HTMLCanvasElement (not OffscreenCanvas)
     // @ts-ignore - Type guard for HTMLCanvasElement.style property
     if (typeof window !== 'undefined' && !(this.canvas instanceof OffscreenCanvas) && this.canvas.style) {
